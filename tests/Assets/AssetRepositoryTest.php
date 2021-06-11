@@ -9,6 +9,7 @@ use Statamic\Assets\AssetRepository;
 use Statamic\Facades\AssetContainer;
 use Tests\PreventSavingStacheItemsToDisk;
 use Tests\TestCase;
+use Statamic\Facades\Asset;
 
 class AssetRepositoryTest extends TestCase
 {
@@ -41,5 +42,29 @@ mime_type: image/jpeg
 
 EOT;
         $this->assertEquals($contents, $disk->get($path));
+    }
+
+    /** @test */
+    public function it_resolves_the_correct_disk_from_similar_names()
+    {
+        $disk = Storage::fake('test', ['url' => 'test_long']);
+        $wrongDisk = Storage::fake('wrongdisk', ['url' => 'test']);
+
+        $file = UploadedFile::fake()->image('image.jpg', 30, 60); // creates a 723 byte image
+        Storage::disk('test')->putFileAs('foo', $file, 'image.jpg');
+        $realFilePath = Storage::disk('test')->getAdapter()->getPathPrefix().'foo/image.jpg';
+        touch($realFilePath, $timestamp = Carbon::now()->subMinutes(3)->timestamp);
+
+        $container = tap(AssetContainer::make('test_long')->disk('test'))->save();
+        $asset = $container->makeAsset('foo/image.jpg');
+        (new AssetRepository)->save($asset);
+
+
+        $foundAsset1 = Asset::find($asset->url());
+        $this->assertInstanceOf(\Statamic\Contracts\Assets\Asset::class, $foundAsset1);
+
+        $wrongContainer = tap(AssetContainer::make('test_short')->disk('wrongdisk'))->save();
+        $foundAsset2 = Asset::find($asset->url());
+        $this->assertInstanceOf(\Statamic\Contracts\Assets\Asset::class, $foundAsset2);
     }
 }
